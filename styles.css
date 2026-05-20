@@ -1,8 +1,10 @@
-/* Estilos para el dashboard */
+/* Estilos para el dashboard de ventas */
+
 .stApp {
     background-color: #f0f3f9;
 }
 
+/* Tarjetas KPI */
 .kpi-card {
     background: white;
     border: 1px solid #e2e7f0;
@@ -11,6 +13,12 @@
     position: relative;
     overflow: hidden;
     margin-bottom: 10px;
+    transition: all 0.2s ease;
+}
+
+.kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
 .kpi-card::before {
@@ -53,18 +61,25 @@
 .up { color: #1D9E75; }
 .dn { color: #A32D2D; }
 
+/* Tarjetas de contenido */
 .card {
     background: white;
     border: 1px solid #e2e7f0;
     border-radius: 12px;
     padding: 15px;
     margin-bottom: 11px;
+    transition: all 0.2s ease;
+}
+
+.card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
 
 .ct {
     font-size: 13px;
     font-weight: 700;
     margin-bottom: 2px;
+    color: #1a1d27;
 }
 
 .cs {
@@ -73,6 +88,7 @@
     margin-bottom: 10px;
 }
 
+/* Secciones */
 .sec {
     font-size: 13px;
     font-weight: 700;
@@ -91,6 +107,7 @@
     display: inline-block;
 }
 
+/* Badge */
 .badge {
     background: #e6f1fb;
     color: #185FA5;
@@ -99,8 +116,10 @@
     padding: 4px 12px;
     border-radius: 20px;
     border: 1px solid #b5d4f4;
+    white-space: nowrap;
 }
 
+/* Barra de filtros */
 .fbar {
     background: white;
     border: 1px solid #e2e7f0;
@@ -109,9 +128,11 @@
     margin-bottom: 14px;
 }
 
+/* Estilos para tablas */
 .dataframe {
     font-size: 12px;
     width: 100%;
+    font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
 .dataframe th {
@@ -121,20 +142,28 @@
     font-size: 10px;
     text-transform: uppercase;
     padding: 8px 10px;
+    letter-spacing: 0.04em;
 }
 
 .dataframe td {
     padding: 7px 10px;
+    border-bottom: 1px solid #e2e7f0;
+}
+
+.dataframe tr:hover {
+    background: #e6f1fb;
 }
 
 .nr {
     text-align: right;
     font-variant-numeric: tabular-nums;
+    font-weight: 600;
 }
 
 .dp { color: #1D9E75; font-weight: 700; }
 .dn2 { color: #A32D2D; font-weight: 700; }
 
+/* Badges de porcentaje */
 .pb {
     display: inline-block;
     font-size: 10px;
@@ -148,6 +177,7 @@
 .pbd { background: #fcebeb; color: #A32D2D; }
 .pbz { background: #f4f6fb; color: #5a6070; }
 
+/* Barras de progreso */
 .mbar {
     display: flex;
     flex-direction: column;
@@ -159,4 +189,38 @@
     height: 5px;
     border-radius: 3px;
     background: #185FA5;
+    transition: width 0.3s ease;
+}
+
+/* Botones de filtros */
+.stButton button {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 11px;
+    border-radius: 16px;
+    background: #f4f6fb;
+    border: 1px solid #e2e7f0;
+    color: #5a6070;
+    transition: all 0.2s ease;
+}
+
+.stButton button:hover {
+    background: #e6f1fb;
+    border-color: #185FA5;
+    color: #185FA5;
+}
+
+/* Selectores */
+.stSelectbox label {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    color: #5a6070 !important;
+    text-transform: uppercase !important;
+}
+
+/* Expander */
+.streamlit-expanderHeader {
+    font-size: 12px !important;
+    background: #f4f6fb !important;
+    border-radius: 8px !important;
 }

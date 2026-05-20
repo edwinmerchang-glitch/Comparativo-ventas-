@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 
 class DataProcessor:
@@ -9,57 +9,63 @@ class DataProcessor:
     def __init__(self):
         self.df = None
         self.last_upload_time = None
-        self.mapping = {
-            'categorias': {},
-            'marcas': {},
-            'proveedores': {}
-        }
-    
+        self.productos = []
+        self.marcas = []
+        self.proveedores = []
+        self.mundos = []
+        self.eventos = []
+        self.materiales = []
+        
     def load_excel(self, file) -> bool:
-        """Carga datos desde archivo Excel"""
+        """Carga datos desde archivo Excel con la estructura específica"""
         try:
             # Cargar el archivo Excel
             self.df = pd.read_excel(file, engine='openpyxl')
             
-            # Normalizar nombres de columnas (ajustar según tu Excel)
-            # Mapeo de columnas esperadas a nombres reales en tu Excel
-            column_mapping = {
-                'fecha': ['fecha', 'date', 'fechaventa', 'fecha_venta'],
-                'producto': ['producto', 'product', 'nombre_producto', 'articulo'],
-                'categoria': ['categoria', 'category', 'categoría', 'cat'],
-                'marca': ['marca', 'brand', 'marca_producto'],
-                'proveedor': ['proveedor', 'provider', 'proveedor_nombre'],
-                'unidades': ['unidades', 'units', 'cantidad', 'qty', 'volumen'],
-                'año': ['año', 'year', 'ano'],
-                'mes': ['mes', 'month']
-            }
-            
-            # Encontrar las columnas reales
-            for target, possible_names in column_mapping.items():
-                for col in self.df.columns:
-                    if col.lower() in possible_names or col.lower() == target:
-                        self.mapping[target] = col
-                        break
-            
-            # Validar columnas necesarias
-            required = ['fecha', 'unidades']
-            missing = [r for r in required if r not in self.mapping]
+            # Verificar columnas requeridas
+            required_columns = ['FECHA', 'CANTIDAD']
+            missing = [col for col in required_columns if col not in self.df.columns]
             if missing:
-                raise ValueError(f"Faltan columnas requeridas: {missing}")
+                st.error(f"Faltan columnas requeridas: {missing}")
+                return False
             
-            # Procesar fechas si no hay año/mes explícito
-            if 'año' not in self.mapping or 'mes' not in self.mapping:
-                self.df['fecha_procesada'] = pd.to_datetime(self.df[self.mapping['fecha']])
-                self.df['año'] = self.df['fecha_procesada'].dt.year
-                self.df['mes'] = self.df['fecha_procesada'].dt.month - 1  # 0-index
-                self.mapping['año'] = 'año'
-                self.mapping['mes'] = 'mes'
+            # Procesar fechas
+            self.df['FECHA_PROCESADA'] = pd.to_datetime(self.df['FECHA'], errors='coerce')
             
-            # Asegurar tipos de datos
-            self.df[self.mapping['unidades']] = pd.to_numeric(self.df[self.mapping['unidades']], errors='coerce').fillna(0)
+            # Eliminar filas con fechas inválidas
+            self.df = self.df.dropna(subset=['FECHA_PROCESADA'])
             
-            # Crear índices para búsqueda rápida
-            self._create_indexes()
+            # Extraer año y mes de la fecha
+            self.df['AÑO'] = self.df['FECHA_PROCESADA'].dt.year
+            self.df['MES'] = self.df['FECHA_PROCESADA'].dt.month - 1  # 0-11 para enero=0
+            
+            # Asegurar que CANTIDAD sea numérico
+            self.df['CANTIDAD'] = pd.to_numeric(self.df['CANTIDAD'], errors='coerce').fillna(0)
+            
+            # Manejar valores nulos en columnas categóricas
+            categorical_cols = ['PRODUCTO', 'PROVEEDOR', 'MARCA', 'MUNDO', 'EVENTO', 'MATERIAL']
+            for col in categorical_cols:
+                if col in self.df.columns:
+                    self.df[col] = self.df[col].fillna('SIN ASIGNAR')
+            
+            # Crear listas únicas para filtros
+            if 'PRODUCTO' in self.df.columns:
+                self.productos = sorted(self.df['PRODUCTO'].dropna().unique())
+                
+            if 'MARCA' in self.df.columns:
+                self.marcas = sorted(self.df['MARCA'].dropna().unique())
+                
+            if 'PROVEEDOR' in self.df.columns:
+                self.proveedores = sorted(self.df['PROVEEDOR'].dropna().unique())
+            
+            if 'MUNDO' in self.df.columns:
+                self.mundos = sorted(self.df['MUNDO'].dropna().unique())
+            
+            if 'EVENTO' in self.df.columns:
+                self.eventos = sorted(self.df['EVENTO'].dropna().unique())
+            
+            if 'MATERIAL' in self.df.columns:
+                self.materiales = sorted(self.df['MATERIAL'].dropna().unique())
             
             self.last_upload_time = datetime.now()
             return True
@@ -68,58 +74,50 @@ class DataProcessor:
             print(f"Error cargando Excel: {e}")
             return False
     
-    def _create_indexes(self):
-        """Crea índices para búsqueda rápida"""
-        # Crear diccionarios de mapeo para filtros
-        if 'categoria' in self.mapping and self.mapping['categoria'] in self.df.columns:
-            self.categorias = sorted(self.df[self.mapping['categoria']].dropna().unique())
-        else:
-            self.categorias = []
-            
-        if 'marca' in self.mapping and self.mapping['marca'] in self.df.columns:
-            self.marcas = sorted(self.df[self.mapping['marca']].dropna().unique())
-        else:
-            self.marcas = []
-            
-        if 'proveedor' in self.mapping and self.mapping['proveedor'] in self.df.columns:
-            self.proveedores = sorted(self.df[self.mapping['proveedor']].dropna().unique())
-        else:
-            self.proveedores = []
-    
     def get_available_years(self) -> List[int]:
         """Obtiene años disponibles en los datos"""
-        if self.df is None:
+        if self.df is None or self.df.empty:
             return [2024, 2025, 2026]
-        return sorted(self.df[self.mapping['año']].unique())
+        years = sorted(self.df['AÑO'].dropna().unique())
+        return [int(y) for y in years if not pd.isna(y)]
     
     def filter_data(self, years: List[int], months: List[int], 
-                   category: Optional[str], marca: Optional[str], 
-                   provider: Optional[str]) -> pd.DataFrame:
+                   producto: Optional[str], marca: Optional[str], 
+                   proveedor: Optional[str], mundo: Optional[str] = None,
+                   evento: Optional[str] = None) -> pd.DataFrame:
         """Filtra los datos según criterios"""
-        if self.df is None:
+        if self.df is None or self.df.empty:
             return pd.DataFrame()
         
         df_filtered = self.df.copy()
         
         # Filtrar por año
         if years and -1 not in years:
-            df_filtered = df_filtered[df_filtered[self.mapping['año']].isin(years)]
+            df_filtered = df_filtered[df_filtered['AÑO'].isin(years)]
         
         # Filtrar por mes
         if months and -1 not in months:
-            df_filtered = df_filtered[df_filtered[self.mapping['mes']].isin(months)]
+            df_filtered = df_filtered[df_filtered['MES'].isin(months)]
         
-        # Filtrar por categoría
-        if category and 'categoria' in self.mapping:
-            df_filtered = df_filtered[df_filtered[self.mapping['categoria']] == category]
+        # Filtrar por producto
+        if producto and producto != "Todos" and producto != "Todas":
+            df_filtered = df_filtered[df_filtered['PRODUCTO'] == producto]
         
         # Filtrar por marca
-        if marca and 'marca' in self.mapping:
-            df_filtered = df_filtered[df_filtered[self.mapping['marca']] == marca]
+        if marca and marca != "Todos" and marca != "Todas":
+            df_filtered = df_filtered[df_filtered['MARCA'] == marca]
         
         # Filtrar por proveedor
-        if provider and 'proveedor' in self.mapping:
-            df_filtered = df_filtered[df_filtered[self.mapping['proveedor']] == provider]
+        if proveedor and proveedor != "Todos" and proveedor != "Todas":
+            df_filtered = df_filtered[df_filtered['PROVEEDOR'] == proveedor]
+        
+        # Filtrar por mundo
+        if mundo and mundo != "Todos" and mundo != "Todas":
+            df_filtered = df_filtered[df_filtered['MUNDO'] == mundo]
+        
+        # Filtrar por evento
+        if evento and evento != "Todos" and evento != "Todas":
+            df_filtered = df_filtered[df_filtered['EVENTO'] == evento]
         
         return df_filtered
     
@@ -128,127 +126,98 @@ class DataProcessor:
         if df.empty:
             return self._get_empty_aggregation()
         
-        # Unidades por año y mes
-        df['year_idx'] = df[self.mapping['año']].map({2024: 0, 2025: 1, 2026: 2}).fillna(0).astype(int)
+        # Obtener años disponibles en los datos filtrados
+        years_available = sorted(df['AÑO'].unique())
         
-        # Agregaciones principales
-        by_year = df.groupby('year_idx')[self.mapping['unidades']].sum().to_dict()
-        for i in range(3):
-            if i not in by_year:
-                by_year[i] = 0
+        # Unidades por año
+        by_year = {}
+        for year in years_available:
+            by_year[year] = df[df['AÑO'] == year]['CANTIDAD'].sum()
         
         # Por mes (todos los años)
-        by_month = df.groupby(self.mapping['mes'])[self.mapping['unidades']].sum().reindex(range(12), fill_value=0).tolist()
+        by_month = df.groupby('MES')['CANTIDAD'].sum().reindex(range(12), fill_value=0).tolist()
         
         # Serie temporal por año
         monthly_by_year = {}
-        for year_idx in range(3):
-            year_data = df[df['year_idx'] == year_idx]
-            monthly = year_data.groupby(self.mapping['mes'])[self.mapping['unidades']].sum().reindex(range(12), fill_value=0).tolist()
-            monthly_by_year[year_idx] = monthly
+        for year in years_available:
+            year_data = df[df['AÑO'] == year]
+            monthly = year_data.groupby('MES')['CANTIDAD'].sum().reindex(range(12), fill_value=0).tolist()
+            monthly_by_year[year] = monthly
         
-        # Por categoría
-        by_category = {}
-        if 'categoria' in self.mapping:
-            cat_data = df.groupby(self.mapping['categoria'])[self.mapping['unidades']].sum()
-            by_category = cat_data.sort_values(ascending=False).to_dict()
+        # Por producto (para ranking)
+        by_product = df.groupby('PRODUCTO')['CANTIDAD'].sum().sort_values(ascending=False).to_dict()
         
         # Por marca
-        by_brand = {}
-        if 'marca' in self.mapping:
-            brand_data = df.groupby(self.mapping['marca'])[self.mapping['unidades']].sum()
-            by_brand = brand_data.sort_values(ascending=False).to_dict()
+        by_brand = df.groupby('MARCA')['CANTIDAD'].sum().sort_values(ascending=False).to_dict()
         
         # Por proveedor
-        by_provider = {}
-        if 'proveedor' in self.mapping:
-            provider_data = df.groupby(self.mapping['proveedor'])[self.mapping['unidades']].sum()
-            by_provider = provider_data.sort_values(ascending=False).to_dict()
+        by_provider = df.groupby('PROVEEDOR')['CANTIDAD'].sum().sort_values(ascending=False).to_dict()
         
-        # Categorías por año para stacked chart
-        cat_by_year = {}
-        if 'categoria' in self.mapping:
-            for year_idx in range(3):
-                year_df = df[df['year_idx'] == year_idx]
-                if not year_df.empty:
-                    cat_by_year[year_idx] = year_df.groupby(self.mapping['categoria'])[self.mapping['unidades']].sum().to_dict()
-                else:
-                    cat_by_year[year_idx] = {}
+        # Por mundo (si existe)
+        by_mundo = {}
+        if 'MUNDO' in df.columns:
+            by_mundo = df.groupby('MUNDO')['CANTIDAD'].sum().sort_values(ascending=False).to_dict()
         
-        # Productos top para tabla
+        # Por evento (si existe)
+        by_evento = {}
+        if 'EVENTO' in df.columns:
+            by_evento = df.groupby('EVENTO')['CANTIDAD'].sum().sort_values(ascending=False).to_dict()
+        
+        # Productos por año para tabla comparativa
         products_df = None
-        if 'producto' in self.mapping:
+        if 'PRODUCTO' in df.columns:
             # Agregar por producto y año
-            product_year = df.groupby([self.mapping['producto'], 'year_idx'])[self.mapping['unidades']].sum().unstack(fill_value=0)
+            product_year = df.groupby(['PRODUCTO', 'AÑO'])['CANTIDAD'].sum().unstack(fill_value=0)
+            
+            # Asegurar columnas para 2024, 2025, 2026
+            for year in [2024, 2025, 2026]:
+                if year not in product_year.columns:
+                    product_year[year] = 0
+            
+            product_year = product_year[[2024, 2025, 2026]]
             product_year.columns = ['u2024', 'u2025', 'u2026']
             product_year['total'] = product_year.sum(axis=1)
             product_year = product_year.sort_values('total', ascending=False).head(50)
             products_df = product_year.reset_index()
         
-        total = df[self.mapping['unidades']].sum()
+        total = df['CANTIDAD'].sum()
+        
+        # Datos por año para marcas (stacked)
+        brand_by_year = {}
+        for year in years_available:
+            year_df = df[df['AÑO'] == year]
+            brand_by_year[year] = year_df.groupby('MARCA')['CANTIDAD'].sum().nlargest(10).to_dict()
         
         return {
             'total': total,
             'by_year': by_year,
             'by_month': by_month,
             'monthly_by_year': monthly_by_year,
-            'by_category': by_category,
+            'by_product': by_product,
             'by_brand': by_brand,
             'by_provider': by_provider,
-            'cat_by_year': cat_by_year,
+            'by_mundo': by_mundo,
+            'by_evento': by_evento,
+            'brand_by_year': brand_by_year,
             'products_df': products_df,
-            'total_records': len(df)
+            'total_records': len(df),
+            'years_available': years_available
         }
     
     def _get_empty_aggregation(self) -> Dict:
         """Retorna estructura vacía cuando no hay datos"""
         return {
             'total': 0,
-            'by_year': {0: 0, 1: 0, 2: 0},
+            'by_year': {},
             'by_month': [0] * 12,
-            'monthly_by_year': {0: [0]*12, 1: [0]*12, 2: [0]*12},
-            'by_category': {},
+            'monthly_by_year': {},
+            'by_product': {},
             'by_brand': {},
             'by_provider': {},
-            'cat_by_year': {0: {}, 1: {}, 2: {}},
+            'by_mundo': {},
+            'by_evento': {},
+            'brand_by_year': {},
             'products_df': None,
-            'total_records': 0
+            'total_records': 0,
+            'years_available': []
         }
-    
-    def get_product_table_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Prepara datos para la tabla comparativa de productos"""
-        if df.empty or 'producto' not in self.mapping:
-            return pd.DataFrame()
-        
-        # Agregar por producto y año
-        product_data = df.groupby([self.mapping['producto'], self.mapping['año']])[self.mapping['unidades']].sum().unstack(fill_value=0)
-        
-        # Asegurar que todos los años existen
-        for year in [2024, 2025, 2026]:
-            if year not in product_data.columns:
-                product_data[year] = 0
-        
-        product_data = product_data[[2024, 2025, 2026]]
-        product_data.columns = ['u2024', 'u2025', 'u2026']
-        
-        # Calcular diferencias y porcentajes
-        product_data['diff_2425'] = product_data['u2025'] - product_data['u2024']
-        product_data['pct_2425'] = np.where(
-            product_data['u2024'] > 0,
-            (product_data['diff_2425'] / product_data['u2024'] * 100),
-            np.where(product_data['u2025'] > 0, 99999, 0)
-        )
-        
-        product_data['diff_2526'] = product_data['u2026'] - product_data['u2025']
-        product_data['pct_2526'] = np.where(
-            product_data['u2025'] > 0,
-            (product_data['diff_2526'] / product_data['u2025'] * 100),
-            np.where(product_data['u2026'] > 0, 99999, 0)
-        )
-        
-        product_data['total'] = product_data[['u2024', 'u2025', 'u2026']].sum(axis=1)
-        
-        # Ordenar por total
-        product_data = product_data.sort_values('total', ascending=False)
-        
-        return product_data.reset_index()
