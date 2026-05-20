@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 import numpy as np
 from datetime import datetime
 from data_processor import DataProcessor
@@ -15,8 +14,29 @@ st.set_page_config(
 )
 
 # Cargar estilos CSS
-with open('styles.css') as f:
-    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+try:
+    with open('styles.css') as f:
+        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+except FileNotFoundError:
+    # Si no existe el archivo CSS, usar estilos básicos
+    st.markdown("""
+    <style>
+    .stApp { background-color: #f0f3f9; }
+    .kpi-card { background: white; border: 1px solid #e2e7f0; border-radius: 12px; padding: 13px 15px; margin-bottom: 10px; }
+    .klb { font-size: 10px; color: #5a6070; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
+    .kv { font-size: 22px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+    .kd { font-size: 11px; font-weight: 600; }
+    .up { color: #1D9E75; }
+    .dn { color: #A32D2D; }
+    .card { background: white; border: 1px solid #e2e7f0; border-radius: 12px; padding: 15px; margin-bottom: 11px; }
+    .ct { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .cs { font-size: 11px; color: #9097a8; margin-bottom: 10px; }
+    .sec { font-size: 13px; font-weight: 700; margin: 18px 0 9px; display: flex; align-items: center; gap: 6px; }
+    .sec::before { content: ''; width: 3px; height: 15px; background: #185FA5; border-radius: 2px; display: inline-block; }
+    .badge { background: #e6f1fb; color: #185FA5; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 20px; border: 1px solid #b5d4f4; }
+    .fbar { background: white; border: 1px solid #e2e7f0; border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # Inicializar procesador en sesión
 if 'processor' not in st.session_state:
@@ -57,8 +77,8 @@ col1, col2, col3 = st.columns([2, 1.5, 1.5])
 
 with col1:
     st.markdown("### 📊 Dashboard de Ventas — Restrepo")
-    if st.session_state.data_loaded:
-        st.caption(f"{st.session_state.processor.df.shape[0]:,} registros · {len(st.session_state.processor.productos)} productos · {len(st.session_state.processor.marcas)} marcas · {len(st.session_state.processor.proveedores)} proveedores")
+    if st.session_state.data_loaded and st.session_state.processor.df is not None:
+        st.caption(f"{st.session_state.processor.df.shape[0]:,} registros · {len(st.session_state.processor.productos)} productos · {len(st.session_state.processor.marcas)} marcas")
     else:
         st.caption("Cargue un archivo Excel para comenzar el análisis")
 
@@ -73,7 +93,7 @@ with col2:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col3:
-    if st.session_state.data_loaded:
+    if st.session_state.data_loaded and st.session_state.processor.last_upload_time:
         st.markdown(f'<div class="badge" style="float:right">📅 Actualizado: {st.session_state.processor.last_upload_time.strftime("%d/%m/%Y")}</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div class="badge" style="float:right">⚠️ Sin datos cargados</div>', unsafe_allow_html=True)
@@ -86,7 +106,7 @@ if uploaded_file is not None:
             st.success(f"✅ Datos cargados exitosamente: {st.session_state.processor.df.shape[0]} registros")
             st.rerun()
         else:
-            st.error("❌ Error al cargar el archivo. Verifique el formato.")
+            st.error("❌ Error al cargar el archivo. Verifique que tenga las columnas: FECHA, CANTIDAD, PRODUCTO, MARCA, PROVEEDOR")
 
 # Si no hay datos cargados, mostrar instrucciones
 if not st.session_state.data_loaded:
@@ -99,15 +119,13 @@ if not st.session_state.data_loaded:
        - `PRODUCTO`: Nombre del producto
        - `MARCA`: Marca del producto
        - `PROVEEDOR`: Proveedor del producto
-       - `MUNDO`: Categoría o mundo del producto
-       - `EVENTO`: Evento o campaña asociada
-       - `MATERIAL`: Código o referencia del material
+       - `MUNDO`: Categoría o mundo del producto (opcional)
+       - `EVENTO`: Evento o campaña asociada (opcional)
+       - `MATERIAL`: Código o referencia del material (opcional)
     
     2. **Haga clic en "Browse files"** y seleccione su archivo Excel
     
     3. **El dashboard se actualizará automáticamente** con sus datos
-    
-    💡 **Consejo**: Puede actualizar los datos diariamente subiendo un nuevo archivo Excel
     """)
     
     # Mostrar ejemplo de formato
@@ -147,8 +165,7 @@ with col_f1:
 
 with col_f2:
     st.markdown('<label style="font-size:10px;font-weight:700;color:#5a6070">📆 MES</label>', unsafe_allow_html=True)
-    selected_months = st.multiselect("Mes", meses_nombres, key="month_filter", label_visibility="collapsed", 
-                                      default=[] if -1 in st.session_state.filters['months'] else [meses_nombres[m] for m in st.session_state.filters['months'] if m != -1])
+    selected_months = st.multiselect("Mes", meses_nombres, key="month_filter", label_visibility="collapsed")
     
     if selected_months:
         st.session_state.filters['months'] = [meses_nombres.index(m) for m in selected_months]
@@ -156,22 +173,25 @@ with col_f2:
         st.session_state.filters['months'] = [-1]
 
 with col_f3:
-    st.markdown('<label style="font-size:10px;font-weight:700;color:#5a6070">🏷️ PRODUCTO</label>', unsafe_allow_html=True)
-    productos_opts = ["Todos"] + st.session_state.processor.productos[:100]
-    producto_idx = st.selectbox("Producto", productos_opts, key="producto_filter", label_visibility="collapsed")
-    st.session_state.filters['producto'] = None if producto_idx == "Todos" else producto_idx
+    if st.session_state.processor.productos:
+        st.markdown('<label style="font-size:10px;font-weight:700;color:#5a6070">🏷️ PRODUCTO</label>', unsafe_allow_html=True)
+        productos_opts = ["Todos"] + st.session_state.processor.productos[:100]
+        producto_idx = st.selectbox("Producto", productos_opts, key="producto_filter", label_visibility="collapsed")
+        st.session_state.filters['producto'] = None if producto_idx == "Todos" else producto_idx
 
 with col_f4:
-    st.markdown('<label style="font-size:10px;font-weight:700;color:#5a6070">⭐ MARCA</label>', unsafe_allow_html=True)
-    marcas_opts = ["Todas"] + st.session_state.processor.marcas[:50]
-    marca_idx = st.selectbox("Marca", marcas_opts, key="marca_filter", label_visibility="collapsed")
-    st.session_state.filters['marca'] = None if marca_idx == "Todas" else marca_idx
+    if st.session_state.processor.marcas:
+        st.markdown('<label style="font-size:10px;font-weight:700;color:#5a6070">⭐ MARCA</label>', unsafe_allow_html=True)
+        marcas_opts = ["Todas"] + st.session_state.processor.marcas[:50]
+        marca_idx = st.selectbox("Marca", marcas_opts, key="marca_filter", label_visibility="collapsed")
+        st.session_state.filters['marca'] = None if marca_idx == "Todas" else marca_idx
 
 with col_f5:
-    st.markdown('<label style="font-size:10px;font-weight:700;color:#5a6070">🏢 PROVEEDOR</label>', unsafe_allow_html=True)
-    prov_opts = ["Todos"] + st.session_state.processor.proveedores[:50]
-    prov_idx = st.selectbox("Proveedor", prov_opts, key="prov_filter", label_visibility="collapsed")
-    st.session_state.filters['provider'] = None if prov_idx == "Todos" else prov_idx
+    if st.session_state.processor.proveedores:
+        st.markdown('<label style="font-size:10px;font-weight:700;color:#5a6070">🏢 PROVEEDOR</label>', unsafe_allow_html=True)
+        prov_opts = ["Todos"] + st.session_state.processor.proveedores[:50]
+        prov_idx = st.selectbox("Proveedor", prov_opts, key="prov_filter", label_visibility="collapsed")
+        st.session_state.filters['provider'] = None if prov_idx == "Todos" else prov_idx
 
 with col_f6:
     if st.session_state.processor.mundos:
@@ -211,7 +231,7 @@ df_filtered = st.session_state.processor.filter_data(
 aggregated = st.session_state.processor.aggregate_data(df_filtered)
 
 # Colores para gráficos
-colores = ['#185FA5', '#1D9E75', '#D85A30', '#BA7517', '#534AB7', '#3B6D11', '#A32D2D', '#0F6E56', '#854F0B', '#3C3489', '#993556', '#639922']
+colores = ['#185FA5', '#1D9E75', '#D85A30', '#BA7517', '#534AB7', '#3B6D11', '#A32D2D', '#0F6E56', '#854F0B', '#3C3489']
 
 # ==================== KPIs ====================
 st.markdown('<div class="krow" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">', unsafe_allow_html=True)
@@ -246,7 +266,8 @@ kpi_data = [
 
 for clase, label, valor, detalle in kpi_data:
     st.markdown(f'''
-    <div class="kpi-card {clase}">
+    <div class="kpi-card" style="position:relative;overflow:hidden">
+        <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:{'#185FA5' if 'kbl' in clase else '#1D9E75' if 'ktl' in clase else '#D85A30' if 'kco' in clase else '#BA7517' if 'kam' in clase else '#534AB7'};border-radius:3px 0 0 3px"></div>
         <div class="klb">{label}</div>
         <div class="kv">{valor}</div>
         <div class="kd">{detalle}</div>
@@ -263,10 +284,10 @@ with st.container():
     st.markdown('<div class="ct">Evolución mensual de unidades vendidas</div>', unsafe_allow_html=True)
     st.markdown('<div class="cs">Comparativa interanual según filtros seleccionados</div>', unsafe_allow_html=True)
     
-    fig_line = go.Figure()
-    
-    for i, year in enumerate(sorted(aggregated['monthly_by_year'].keys())):
-        if year in aggregated['monthly_by_year']:
+    if aggregated['monthly_by_year']:
+        fig_line = go.Figure()
+        
+        for i, year in enumerate(sorted(aggregated['monthly_by_year'].keys())):
             fig_line.add_trace(go.Scatter(
                 x=meses_nombres,
                 y=aggregated['monthly_by_year'][year],
@@ -277,18 +298,20 @@ with st.container():
                 mode='lines+markers',
                 marker=dict(size=6)
             ))
-    
-    fig_line.update_layout(
-        height=250,
-        margin=dict(l=40, r=20, t=20, b=20),
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-        plot_bgcolor='white',
-        paper_bgcolor='white',
-        hovermode='x unified'
-    )
-    fig_line.update_xaxes(gridcolor='rgba(0,0,0,0.05)', showgrid=True, gridwidth=0.5)
-    fig_line.update_yaxes(gridcolor='rgba(0,0,0,0.05)', tickformat=',.0f', showgrid=True, gridwidth=0.5)
-    st.plotly_chart(fig_line, use_container_width=True)
+        
+        fig_line.update_layout(
+            height=250,
+            margin=dict(l=40, r=20, t=20, b=20),
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            hovermode='x unified'
+        )
+        fig_line.update_xaxes(gridcolor='rgba(0,0,0,0.05)', showgrid=True, gridwidth=0.5)
+        fig_line.update_yaxes(gridcolor='rgba(0,0,0,0.05)', tickformat=',.0f', showgrid=True, gridwidth=0.5)
+        st.plotly_chart(fig_line, use_container_width=True)
+    else:
+        st.info("No hay datos suficientes para mostrar la tendencia")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==================== GRÁFICOS DE BARRAS ====================
@@ -300,21 +323,24 @@ with col_g2_1:
     st.markdown('<div class="cs">Volumen acumulado según filtros activos</div>', unsafe_allow_html=True)
     
     years_list = sorted(aggregated['by_year'].keys())
-    values_list = [aggregated['by_year'].get(year, 0) for year in years_list]
-    
-    fig_year = go.Figure(data=[
-        go.Bar(
-            x=[str(y) for y in years_list],
-            y=values_list,
-            marker_color=colores[:len(years_list)],
-            text=[fmt_k(v) for v in values_list],
-            textposition='outside',
-            textfont=dict(size=11, weight='bold')
-        )
-    ])
-    fig_year.update_layout(height=200, margin=dict(l=20, r=20, t=30, b=20), showlegend=False)
-    fig_year.update_yaxes(tickformat=',.0f')
-    st.plotly_chart(fig_year, use_container_width=True)
+    if years_list:
+        values_list = [aggregated['by_year'].get(year, 0) for year in years_list]
+        
+        fig_year = go.Figure(data=[
+            go.Bar(
+                x=[str(y) for y in years_list],
+                y=values_list,
+                marker_color=colores[:len(years_list)],
+                text=[fmt_k(v) for v in values_list],
+                textposition='outside',
+                textfont=dict(size=11, weight='bold')
+            )
+        ])
+        fig_year.update_layout(height=200, margin=dict(l=20, r=20, t=30, b=20), showlegend=False)
+        fig_year.update_yaxes(tickformat=',.0f')
+        st.plotly_chart(fig_year, use_container_width=True)
+    else:
+        st.info("No hay datos de años para mostrar")
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_g2_2:
@@ -322,124 +348,52 @@ with col_g2_2:
     st.markdown('<div class="ct">Distribución por mes</div>', unsafe_allow_html=True)
     st.markdown('<div class="cs">Total de unidades por mes (todos los años)</div>', unsafe_allow_html=True)
     
-    max_m = max(aggregated['by_month']) if aggregated['by_month'] else 0
-    colors_m = [colores[2] if v == max_m and v > 0 else colores[0] for v in aggregated['by_month']]
-    
-    fig_month = go.Figure(data=[
-        go.Bar(
-            x=meses_nombres, 
-            y=aggregated['by_month'], 
-            marker_color=colors_m,
-            text=[fmt_k(v) if v > 0 else '' for v in aggregated['by_month']],
-            textposition='outside'
-        )
-    ])
-    fig_month.update_layout(height=200, margin=dict(l=20, r=20, t=20, b=20), showlegend=False)
-    fig_month.update_yaxes(tickformat=',.0f')
-    st.plotly_chart(fig_month, use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ==================== TOP MARCAS Y PROVEEDORES ====================
-st.markdown('<div class="sec">🏷️ Top Marcas y Proveedores</div>', unsafe_allow_html=True)
-
-col_top1, col_top2 = st.columns(2)
-
-with col_top1:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="ct">Top 10 Marcas</div>', unsafe_allow_html=True)
-    st.markdown('<div class="cs">Marcas con mayor volumen de ventas</div>', unsafe_allow_html=True)
-    
-    top_brands = list(aggregated['by_brand'].items())[:10]
-    if top_brands:
-        fig_brands = go.Figure(data=[
+    if aggregated['by_month']:
+        max_m = max(aggregated['by_month']) if aggregated['by_month'] else 0
+        colors_m = [colores[2] if v == max_m and v > 0 else colores[0] for v in aggregated['by_month']]
+        
+        fig_month = go.Figure(data=[
             go.Bar(
-                x=[v for k, v in top_brands],
-                y=[k[:25] + '…' if len(k) > 25 else k for k, v in top_brands],
-                orientation='h',
-                marker_color=colores[:len(top_brands)],
-                text=[fmt_k(v) for k, v in top_brands],
+                x=meses_nombres, 
+                y=aggregated['by_month'], 
+                marker_color=colors_m,
+                text=[fmt_k(v) if v > 0 else '' for v in aggregated['by_month']],
                 textposition='outside'
             )
         ])
-        fig_brands.update_layout(height=400, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
-        fig_brands.update_xaxes(tickformat=',.0f')
-        fig_brands.update_yaxes(autorange="reversed")
-        st.plotly_chart(fig_brands, use_container_width=True)
+        fig_month.update_layout(height=200, margin=dict(l=20, r=20, t=20, b=20), showlegend=False)
+        fig_month.update_yaxes(tickformat=',.0f')
+        st.plotly_chart(fig_month, use_container_width=True)
     else:
-        st.info("No hay datos de marcas para mostrar")
+        st.info("No hay datos de meses para mostrar")
     st.markdown('</div>', unsafe_allow_html=True)
 
-with col_top2:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="ct">Top 10 Proveedores</div>', unsafe_allow_html=True)
-    st.markdown('<div class="cs">Proveedores con mayor volumen de ventas</div>', unsafe_allow_html=True)
+# ==================== TOP MARCAS ====================
+if aggregated['by_brand']:
+    st.markdown('<div class="sec">⭐ Top Marcas</div>', unsafe_allow_html=True)
     
-    top_providers = list(aggregated['by_provider'].items())[:10]
-    if top_providers:
-        fig_providers = go.Figure(data=[
-            go.Bar(
-                x=[v for k, v in top_providers],
-                y=[k[:25] + '…' if len(k) > 25 else k for k, v in top_providers],
-                orientation='h',
-                marker_color=colores[2],
-                text=[fmt_k(v) for k, v in top_providers],
-                textposition='outside'
-            )
-        ])
-        fig_providers.update_layout(height=400, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
-        fig_providers.update_xaxes(tickformat=',.0f')
-        fig_providers.update_yaxes(autorange="reversed")
-        st.plotly_chart(fig_providers, use_container_width=True)
-    else:
-        st.info("No hay datos de proveedores para mostrar")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ==================== GRÁFICOS ADICIONALES (MUNDO Y EVENTO) ====================
-if aggregated['by_mundo'] or aggregated['by_evento']:
-    col_extra1, col_extra2 = st.columns(2)
-    
-    with col_extra1:
-        if aggregated['by_mundo']:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown('<div class="ct">🌍 Distribución por Mundo</div>', unsafe_allow_html=True)
-            st.markdown('<div class="cs">Participación de cada mundo en el total</div>', unsafe_allow_html=True)
-            
-            mundo_data = dict(list(aggregated['by_mundo'].items())[:8])
-            fig_mundo = go.Figure(data=[
-                go.Pie(
-                    labels=list(mundo_data.keys()),
-                    values=list(mundo_data.values()),
-                    hole=0.4,
-                    marker_colors=colores[:len(mundo_data)],
-                    textinfo='label+percent',
-                    textposition='auto'
-                )
-            ])
-            fig_mundo.update_layout(height=350, margin=dict(l=20, r=20, t=20, b=20))
-            st.plotly_chart(fig_mundo, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-    
-    with col_extra2:
-        if aggregated['by_evento']:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown('<div class="ct">🎯 Impacto por Evento</div>', unsafe_allow_html=True)
-            st.markdown('<div class="cs">Volumen de ventas por tipo de evento</div>', unsafe_allow_html=True)
-            
-            evento_data = dict(list(aggregated['by_evento'].items())[:8])
-            fig_evento = go.Figure(data=[
+    with st.container():
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="ct">Top 10 Marcas con mayor volumen</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cs">Análisis de participación por marca</div>', unsafe_allow_html=True)
+        
+        top_brands = list(aggregated['by_brand'].items())[:10]
+        if top_brands:
+            fig_brands = go.Figure(data=[
                 go.Bar(
-                    x=list(evento_data.values()),
-                    y=[k[:20] + '…' if len(k) > 20 else k for k in evento_data.keys()],
+                    x=[v for k, v in top_brands],
+                    y=[k[:30] + '…' if len(k) > 30 else k for k, v in top_brands],
                     orientation='h',
-                    marker_color=colores[1],
-                    text=[fmt_k(v) for v in evento_data.values()],
+                    marker_color=colores[:len(top_brands)],
+                    text=[fmt_k(v) for k, v in top_brands],
                     textposition='outside'
                 )
             ])
-            fig_evento.update_layout(height=350, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
-            fig_evento.update_xaxes(tickformat=',.0f')
-            st.plotly_chart(fig_evento, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            fig_brands.update_layout(height=400, margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
+            fig_brands.update_xaxes(tickformat=',.0f')
+            fig_brands.update_yaxes(autorange="reversed")
+            st.plotly_chart(fig_brands, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ==================== TABLA DE PRODUCTOS ====================
 if aggregated['products_df'] is not None and not aggregated['products_df'].empty:
@@ -452,14 +406,6 @@ if aggregated['products_df'] is not None and not aggregated['products_df'].empty
         
         products_df = aggregated['products_df'].copy()
         
-        # Calcular variaciones para colorear
-        products_df['pct_2425_color'] = products_df['pct_2425'].apply(
-            lambda x: '🟢' if x > 20 else ('🟡' if x > 0 else ('🔴' if x < 0 else '⚪'))
-        )
-        products_df['pct_2526_color'] = products_df['pct_2526'].apply(
-            lambda x: '🟢' if x > 20 else ('🟡' if x > 0 else ('🔴' if x < 0 else '⚪'))
-        )
-        
         # Formatear para mostrar
         display_df = products_df.head(20).copy()
         display_df['PRODUCTO'] = display_df['PRODUCTO'].apply(lambda x: x[:50] + '…' if len(x) > 50 else x)
@@ -467,9 +413,9 @@ if aggregated['products_df'] is not None and not aggregated['products_df'].empty
         display_df['u2025'] = display_df['u2025'].apply(lambda x: f"{int(x):,}")
         display_df['u2026'] = display_df['u2026'].apply(lambda x: f"{int(x):,}")
         display_df['diff_2425'] = display_df['diff_2425'].apply(lambda x: f"{int(x):,}")
-        display_df['pct_2425'] = display_df.apply(lambda row: f"{row['pct_2425_color']} {pct_format(row['pct_2425'])}", axis=1)
+        display_df['pct_2425'] = display_df['pct_2425'].apply(lambda x: pct_format(x))
         display_df['diff_2526'] = display_df['diff_2526'].apply(lambda x: f"{int(x):,}")
-        display_df['pct_2526'] = display_df.apply(lambda row: f"{row['pct_2526_color']} {pct_format(row['pct_2526'])}", axis=1)
+        display_df['pct_2526'] = display_df['pct_2526'].apply(lambda x: pct_format(x))
         
         st.dataframe(
             display_df[['PRODUCTO', 'u2024', 'u2025', 'u2026', 'diff_2425', 'pct_2425', 'diff_2526', 'pct_2526']],
@@ -488,32 +434,6 @@ if aggregated['products_df'] is not None and not aggregated['products_df'].empty
         )
         
         st.markdown('</div>', unsafe_allow_html=True)
-
-# ==================== RESUMEN DE FILTROS ACTIVOS ====================
-with st.expander("🔍 Ver filtros activos"):
-    active_filters = []
-    if st.session_state.filters['years'] and -1 not in st.session_state.filters['years']:
-        active_filters.append(f"Años: {', '.join(map(str, st.session_state.filters['years']))}")
-    if st.session_state.filters['months'] and -1 not in st.session_state.filters['months']:
-        active_filters.append(f"Meses: {', '.join([meses_nombres[m] for m in st.session_state.filters['months']])}")
-    if st.session_state.filters.get('producto'):
-        active_filters.append(f"Producto: {st.session_state.filters['producto']}")
-    if st.session_state.filters.get('marca'):
-        active_filters.append(f"Marca: {st.session_state.filters['marca']}")
-    if st.session_state.filters.get('provider'):
-        active_filters.append(f"Proveedor: {st.session_state.filters['provider']}")
-    if st.session_state.filters.get('mundo'):
-        active_filters.append(f"Mundo: {st.session_state.filters['mundo']}")
-    if st.session_state.filters.get('evento'):
-        active_filters.append(f"Evento: {st.session_state.filters['evento']}")
-    
-    if active_filters:
-        st.write("**Filtros aplicados:**")
-        for f in active_filters:
-            st.write(f"- {f}")
-        st.write(f"**Registros encontrados:** {aggregated['total_records']:,}")
-    else:
-        st.write("No hay filtros activos - mostrando todos los datos")
 
 # ==================== FOOTER ====================
 st.markdown("---")

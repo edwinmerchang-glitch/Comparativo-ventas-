@@ -26,7 +26,7 @@ class DataProcessor:
             required_columns = ['FECHA', 'CANTIDAD']
             missing = [col for col in required_columns if col not in self.df.columns]
             if missing:
-                st.error(f"Faltan columnas requeridas: {missing}")
+                print(f"Faltan columnas requeridas: {missing}")
                 return False
             
             # Procesar fechas
